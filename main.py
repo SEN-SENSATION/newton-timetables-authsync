@@ -43,7 +43,7 @@ class Main:
 
     def __init__(self):
 
-        self.operator_name = inquirer.text("What is you name?")
+        self.operator_name = inquirer.text("What is your name?")
 
         self.load_config()
         self.connect_db()
