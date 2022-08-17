@@ -19,7 +19,7 @@ from utils.filter import filter_unwanted
 ConfigDict = TypedDict("ConfigDict", {"DB_URI": str, "SPREADSHEET_ID": str})
 
 logger = logging.getLogger(__name__)
-coloredlogs.install(level="DEBUG", logger=logger)
+coloredlogs.install(level="LOG", logger=logger)
 
 
 class Main:
@@ -43,6 +43,7 @@ class Main:
 
     def __init__(self):
 
+        logger.info("Initializing the program")
         self.operator_name = inquirer.text("What is your name?")
 
         self.load_config()
@@ -153,34 +154,45 @@ class Main:
         self.read_records = filtered_records
 
     def write_db(self):
-        for year in self.selected_year:
-            result = self.dbClient["auth"]["users"].delete_many(
-                {"year": year, "type": "student"}
-            )
-        logger.info(f"deleted {result.deleted_count} users")
+        if self.reset_auth_db:
+            for year in self.selected_year:
+                result = self.dbClient["auth"]["users"].delete_many(
+                    {"year": int(year.split()[0]), "type": "student"}
+                )
+            logger.info(f"deleted {result.deleted_count} users")
+
         for i in tqdm(range(self.read_records["counts"])):
             this_record = self.read_records["data"][i]
-            self.dbClient["auth"]["users"].insert_one(
-                {
-                    "firstName": this_record["Name"].split()[0],
-                    "lastName": this_record["Name"].split()[1],
-                    "nickName": this_record["Nickname"],
-                    "email": this_record["Email"],
-                    "year": this_record["Year"],
-                    "room": this_record["Room"],
-                    "track": this_record.get("Track", None),
-                    "password": "$2b$12$Br3v95wIpDGgaFyttKheyuorkTuH8OE6IaBflcoAIHAmBs/hSem/S",
-                    "type": "student",
-                    "issuedId": "N00000",
-                    "elective": {
-                        "english": this_record.get("English", None),
-                        "activity": "Creative Drama",
-                    },
-                    "lastSync": datetime.now(),
-                    "syncedBy": self.operator_name,
-                }
-            )
-            pass
+
+            prepared_data = {
+                "firstName": this_record["Name"].split()[0],
+                "lastName": this_record["Name"].split()[1],
+                "nickName": this_record["Nickname"],
+                "email": this_record["Email"],
+                "year": this_record["Year"],
+                "room": this_record["Room"],
+                "track": this_record.get("Track", None),
+                "type": "student",
+                "issuedId": "N00000",
+                "elective": {
+                    "english": this_record.get("English", None),
+                    "activity": "Creative Drama",
+                },
+                "lastSync": datetime.now(),
+                "syncedBy": self.operator_name,
+            }
+
+            if self.dbClient["auth"]["users"].find_one({"email": this_record["Email"]}):
+                self.dbClient["auth"]["users"].update_one(
+                    {"email": this_record["Email"]}, {"$set": prepared_data}
+                )
+            else:
+                self.dbClient["auth"]["users"].insert_one(
+                    {
+                        **prepared_data,
+                        "password": "$2b$12$Br3v95wIpDGgaFyttKheyuorkTuH8OE6IaBflcoAIHAmBs/hSem/S",
+                    }
+                )
 
 
 if __name__ == "__main__":
